@@ -1,7 +1,8 @@
 # Runs this repo's action via `uses: ./` ( @v1 is not released ).
 # `schedule` fires only on the default branch. `push` (non-main) and
 # `workflow_dispatch` run it on a branch so the result can be checked
-# against the real Actions runs API before merge.
+# against the real Actions runs API before merge. A push has to change
+# the tree; an empty commit does not start this workflow.
 name: cron-sentinel
 on:
   schedule:
