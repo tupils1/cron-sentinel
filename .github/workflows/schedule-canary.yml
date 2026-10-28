@@ -1,0 +1,16 @@
+# High-frequency schedule used as a real subject for cron-sentinel.
+# GitHub only fires `schedule` on the default branch. workflow_dispatch runs
+# are intentionally not a backfill: cron-sentinel counts event=schedule only.
+name: schedule-canary
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: canary
+        run: echo "schedule-canary $(date -u +%Y-%m-%dT%H:%M:%SZ)"
