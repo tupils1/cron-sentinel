@@ -40497,6 +40497,7 @@ class GitHub {
         const out = [];
         const created = encodeURIComponent(`>=${since.toISOString()}`);
         for (let page = 1; page <= maxPages; page++) {
+            // event=schedule only: a workflow_dispatch run is not a backfill for a missed slot.
             const r = await this.request('GET', this.r(`/actions/workflows/${workflowId}/runs?event=schedule&created=${created}&per_page=100&page=${page}`));
             out.push(...r.workflow_runs);
             if (r.workflow_runs.length < 100)
@@ -40672,6 +40673,18 @@ function matches(spec, d) {
     return true;
 }
 const MIN = 60_000;
+const DAY_MS = 86_400_000;
+/** Monday, so a 7-day window contains every weekday. January avoids DST gaps. */
+const SAMPLE_WEEK_START = Date.UTC(2026, 0, 5);
+/**
+ * Average expected fires per day over a fixed 7-day week.
+ * Hourly (`0 * * * *`) is exactly 24. More than 24 means more often than hourly.
+ */
+function firesPerDay(spec) {
+    const from = new Date(SAMPLE_WEEK_START);
+    const to = new Date(SAMPLE_WEEK_START + 7 * DAY_MS);
+    return fireTimes(spec, from, to).length / 7;
+}
 /** All fire times t with from < t <= to (minute resolution). */
 function fireTimes(spec, from, to, limit = 100_000) {
     const out = [];
@@ -40687,6 +40700,10 @@ function fireTimes(spec, from, to, limit = 100_000) {
 
 ;// CONCATENATED MODULE: ./src/analyze.ts
 
+/** 3 when the schedule fires more than once an hour on average; otherwise 1. */
+function defaultMinConsecutiveMisses(cron, timezone) {
+    return firesPerDay(parseCron(cron, timezone)) > 24 ? 3 : 1;
+}
 const analyze_MIN = 60_000;
 /**
  * Match schedule runs to expected fire times. Each run is attributed to the
@@ -40707,7 +40724,7 @@ function analyze(wf, runs, now, t, notBefore) {
             continue;
         }
         for (const d of fireTimes(spec, from, now))
-            slots.push({ expected: d, cron: s.cron });
+            slots.push({ expected: d, cron: s.cron, timezone: s.timezone });
     }
     slots.sort((a, b) => a.expected.getTime() - b.expected.getTime());
     const sorted = [...runs].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
@@ -40725,9 +40742,15 @@ function analyze(wf, runs, now, t, notBefore) {
         if (!byIndex.has(i))
             byIndex.set(i, run);
     }
-    const missed = [];
     const delayed = [];
+    const groups = new Map();
     slots.forEach((slot, idx) => {
+        const key = `${slot.timezone ?? ''}\0${slot.cron}`;
+        const g = groups.get(key);
+        if (g)
+            g.push(idx);
+        else
+            groups.set(key, [idx]);
         const run = byIndex.get(idx);
         if (run) {
             slot.run = run;
@@ -40735,16 +40758,37 @@ function analyze(wf, runs, now, t, notBefore) {
             if (slot.delayMinutes > t.delayMinutes)
                 delayed.push(slot);
         }
-        else if (now.getTime() - slot.expected.getTime() > t.graceMinutes * analyze_MIN) {
-            missed.push(slot);
-        }
     });
+    // Per schedule. A workflow_dispatch run never reaches here: scheduleRuns asks for event=schedule only.
+    const missed = [];
+    let suppressedMisses = 0;
+    for (const idxs of groups.values()) {
+        const sample = slots[idxs[0]];
+        const need = t.minConsecutiveMisses ?? defaultMinConsecutiveMisses(sample.cron, sample.timezone);
+        let streak = [];
+        const flush = () => {
+            if (streak.length >= need)
+                missed.push(...streak);
+            else
+                suppressedMisses += streak.length;
+            streak = [];
+        };
+        for (const idx of idxs) {
+            const slot = slots[idx];
+            if (slot.run || now.getTime() - slot.expected.getTime() <= t.graceMinutes * analyze_MIN)
+                flush();
+            else
+                streak.push(slot);
+        }
+        flush();
+    }
+    missed.sort((a, b) => a.expected.getTime() - b.expected.getTime());
     // Only the trailing streak of failures counts: a later success means it recovered.
     const completed = sorted.filter((r) => r.status === 'completed');
     const failed = [];
     for (let k = completed.length - 1; k >= 0 && completed[k].conclusion === 'failure'; k--)
         failed.unshift(completed[k]);
-    return { workflow: wf, errors, slots, missed, delayed, failed, unmatchedRuns };
+    return { workflow: wf, errors, slots, missed, suppressedMisses, delayed, failed, unmatchedRuns };
 }
 function hasProblems(a) {
     return a.missed.length + a.delayed.length + a.failed.length + a.errors.length > 0;
@@ -40853,7 +40897,7 @@ function issueBody(a, failures, opts) {
     }
     for (const n of opts.notes ?? [])
         out.push(`> ${n}`);
-    out.push('', '_GitHub documents that `schedule` runs may be delayed or dropped under load, especially at the top of the hour. Consider a minute like `17` instead of `0`._');
+    out.push('', '_GitHub documents that `schedule` runs may be delayed or dropped under load, especially at the top of the hour. Consider a minute like `17` instead of `0`. Only `event=schedule` runs count: a `workflow_dispatch` run does not fill a missed slot._');
     return out.join('\n');
 }
 
@@ -40965,7 +41009,7 @@ async function runSentinel(gh, o, log, now = new Date(), fetchFn = fetch) {
         else if (w.state.startsWith('disabled'))
             a.errors.push(`Workflow state is \`${w.state}\`; scheduled runs will not fire.`);
         result.analyses.push(a);
-        log.info(`${w.path}: expected ${a.slots.length}, missed ${a.missed.length}, delayed ${a.delayed.length}, failing ${a.failed.length}`);
+        log.info(`${w.path}: expected ${a.slots.length}, missed ${a.missed.length}, suppressed ${a.suppressedMisses}, delayed ${a.delayed.length}, failing ${a.failed.length}`);
         const failures = [];
         for (const r of a.failed.slice(-3))
             failures.push(await describeFailure(gh, r, o.logTailLines));
@@ -41020,7 +41064,14 @@ async function syncIssue(gh, a, failures, o, now, result, log) {
         return;
     }
     const title = issueTitle(a);
-    const body = issueBody(a, failures, { lookbackMinutes: o.lookbackMinutes, delayMinutes: o.delayMinutes, now });
+    const notes = [];
+    if (a.suppressedMisses > 0) {
+        const rule = o.minConsecutiveMisses === undefined
+            ? '3 for schedules that fire more than once an hour, otherwise 1'
+            : String(o.minConsecutiveMisses);
+        notes.push(`${a.suppressedMisses} missed slot(s) were hidden: a miss is reported only after ${rule} consecutive misses.`);
+    }
+    const body = issueBody(a, failures, { lookbackMinutes: o.lookbackMinutes, delayMinutes: o.delayMinutes, now, notes });
     if (o.dryRun) {
         log.info(`[dry-run] ${title}\n${body}`);
         result.issues.push({ workflow: path, number: existing?.number, action: 'dry-run' });
@@ -41053,11 +41104,22 @@ function bool(name, def) {
     const v = getInput(name).trim().toLowerCase();
     return v === '' ? def : v === 'true';
 }
+/** Empty means "automatic" (see defaultMinConsecutiveMisses). */
+function optionalPositiveInt(name) {
+    const v = getInput(name).trim();
+    if (v === '')
+        return undefined;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1)
+        throw new Error(`input ${name} must be a positive integer`);
+    return n;
+}
 function readOptions() {
     return {
         lookbackMinutes: num('lookback-minutes', 1440),
         delayMinutes: num('delay-threshold-minutes', 30),
         graceMinutes: num('grace-minutes', 90),
+        minConsecutiveMisses: optionalPositiveInt('min-consecutive-misses'),
         createIssues: bool('create-issues', true),
         closeOnRecovery: bool('close-on-recovery', true),
         ignore: getInput('ignore-workflows').split(/[\s,]+/).filter(Boolean),
@@ -41085,8 +41147,22 @@ async function main() {
         await summary
             .addHeading('cron-sentinel')
             .addTable([
-            [{ data: 'Workflow', header: true }, { data: 'Expected', header: true }, { data: 'Missed', header: true }, { data: 'Delayed', header: true }, { data: 'Failing', header: true }],
-            ...r.analyses.map((a) => [a.workflow.path, String(a.slots.length), String(a.missed.length), String(a.delayed.length), String(a.failed.length)]),
+            [
+                { data: 'Workflow', header: true },
+                { data: 'Expected', header: true },
+                { data: 'Missed', header: true },
+                { data: 'Suppressed', header: true },
+                { data: 'Delayed', header: true },
+                { data: 'Failing', header: true },
+            ],
+            ...r.analyses.map((a) => [
+                a.workflow.path,
+                String(a.slots.length),
+                String(a.missed.length),
+                String(a.suppressedMisses),
+                String(a.delayed.length),
+                String(a.failed.length),
+            ]),
         ])
             .addRaw(r.inactivityWarning ? `\n\n⚠️ ${r.inactivityWarning}\n` : '')
             .write()

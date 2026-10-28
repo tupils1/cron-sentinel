@@ -99,6 +99,41 @@ describe('runSentinel', () => {
     expect((await go({ runs: { 1: healthy }, issues }, { dryRun: true })).r.issues[0].action).toBe('dry-run');
   });
 
+  it('does not open an issue for a short sub-hourly miss streak', async () => {
+    const quarter = "name: Quarter\non:\n  schedule:\n    - cron: '*/15 * * * *'\njobs: {}\n";
+    const files = { '.github/workflows/hourly.yml': quarter };
+    const open = await go({ files, runs: { 1: [] } }, { lookbackMinutes: 60, graceMinutes: 0 });
+    expect(open.r.analyses[0].missed).toHaveLength(4);
+    expect(open.r.analyses[0].suppressedMisses).toBe(0);
+    expect(open.r.issues[0]).toMatchObject({ action: 'created' });
+    expect((open.calls.find((c) => c.method === 'POST')!.body as { title: string }).title).toBe('[cron-sentinel] Quarter: 4 missed');
+    resetIssueCache();
+    const hidden = await go(
+      { files, runs: { 1: [run('2026-10-28T04:30:05Z')] } },
+      { lookbackMinutes: 60, graceMinutes: 0 },
+    );
+    expect(hidden.r.analyses[0].missed).toHaveLength(0);
+    expect(hidden.r.analyses[0].suppressedMisses).toBe(3);
+    expect(hidden.r.issues).toEqual([]);
+    expect(hidden.calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+
+  it('explains hidden misses when an issue is opened', async () => {
+    const quarter = "name: Quarter\non:\n  schedule:\n    - cron: '*/15 * * * *'\njobs: {}\n";
+    const files = { '.github/workflows/hourly.yml': quarter };
+    const runs = ['02:15', '02:30', '02:45', '03:00', '03:15', '04:00'].map((hm) => run(`2026-10-28T${hm}:01Z`));
+    const noted = await go({ files, runs: { 1: runs } }, { lookbackMinutes: 180, graceMinutes: 20 });
+    const body = (noted.calls.find((c) => c.method === 'POST')!.body as { body: string }).body;
+    expect(noted.r.analyses[0].suppressedMisses).toBe(2);
+    expect(body).toContain('2 missed slot(s) were hidden');
+    expect(body).toContain('more than once an hour');
+    resetIssueCache();
+    const explicit = await go({ files, runs: { 1: runs } }, { lookbackMinutes: 180, graceMinutes: 20, minConsecutiveMisses: 3 });
+    const body2 = (explicit.calls.find((c) => c.method === 'POST')!.body as { body: string }).body;
+    expect(body2).toContain('after 3 consecutive');
+    expect(body2).not.toContain('more than once an hour');
+  });
+
   it('dry run writes nothing', async () => {
     const { r, calls } = await go({ runs: { 1: [] } }, { dryRun: true });
     expect(r.issues[0].action).toBe('dry-run');

@@ -8,7 +8,7 @@ Zero-config watchdog for GitHub Actions `schedule:` workflows. GitHub [documents
 
 - Reads every workflow on the default branch and parses its `on.schedule` crons (UTC, or the optional `timezone`). Supports `*`, lists, ranges, steps, `JAN`/`MON` names, `7` = Sunday, and the cron rule that day-of-month and day-of-week are OR-ed when both are set.
 - Computes expected fire times over a lookback window and matches them against the runs API (`event=schedule`).
-- **Missed**: no run for an expected time after `grace-minutes` (default 90, because GitHub routinely delays).
+- **Missed**: no `schedule` run for an expected time after `grace-minutes` (default 90, because GitHub routinely delays). A manual `workflow_dispatch` run is not a backfill. Schedules that fire more than once an hour (more than 24 expected runs per day) are reported only after `min-consecutive-misses` consecutive missed slots. The default is **3** for those schedules and **1** otherwise; set the input to use one number for every schedule.
 - **Severely delayed**: a run started more than `delay-threshold-minutes` late (default 30).
 - **Failing**: the latest scheduled runs failed. The issue includes job, failed step, exit code, duration and a cleaned log tail.
 - **Disabled / about to be disabled**: workflow state `disabled_inactivity`, and a warning when the default branch has had no commit for `inactivity-warn-days` (default 45).
@@ -36,6 +36,8 @@ jobs:
       - uses: tupils1/cron-sentinel@v0
 ```
 
+> **`@v0` is not released.** There is no `v0` git tag, GitHub Release, or Marketplace listing, so `tupils1/cron-sentinel@v0` does not resolve yet. The example keeps `@v0` as the ref to use once a release exists. Until then, check out this repository and call it with `uses: ./` (see [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)).
+
 > ⚠️ The sentinel can be delayed or dropped like any scheduled workflow. For best results trigger it from somewhere else too: an external cron calling `workflow_dispatch`, or run it from a different repo with `repository: owner/name` and a token that can read that repo.
 
 ## Inputs
@@ -47,6 +49,7 @@ jobs:
 | `lookback-minutes` | `1440` | Window to check |
 | `delay-threshold-minutes` | `30` | Later than this = severe delay |
 | `grace-minutes` | `90` | Wait this long before calling a slot missed |
+| `min-consecutive-misses` | 3 if the schedule averages more than once an hour, else 1 | Report misses only after this many consecutive missed slots. Empty uses that automatic default. |
 | `ignore-workflows` | | Comma/newline list of file names or paths |
 | `create-issues` | `true` | Open/update issues |
 | `close-on-recovery` | `true` | Close the issue when healthy |
@@ -62,7 +65,8 @@ Outputs: `workflows-checked`, `problems`, `issues` (JSON), `reruns` (JSON).
 
 - Workflow files are read from the default branch at check time; if a cron changed inside the window, older slots use the new cron.
 - Expected times before the workflow was created are skipped.
-- Very frequent schedules (every 5 min) are often thinned by GitHub; raise `grace-minutes` or ignore them.
+- Very frequent schedules (every 5–15 min) are often thinned by GitHub. They default to a miss report only after 3 consecutive missed slots; set `min-consecutive-misses` to change that. `workflow_dispatch` runs never fill a slot.
+- This repo's own check is [`.github/workflows/schedule-canary.yml`](.github/workflows/schedule-canary.yml) (`*/15`, default branch only) plus [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml), which runs `uses: ./` in dry-run and normal mode.
 
 ## Development
 

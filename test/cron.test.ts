@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fireTimes, matches, parseCron } from '../src/cron';
+import { firesPerDay, fireTimes, matches, parseCron } from '../src/cron';
 
 const d = (s: string) => new Date(s);
 
@@ -47,6 +47,15 @@ describe('matches', () => {
     expect(matches(parseCron('0 9 * * *', 'UTC'), d('2026-10-28T09:00:00Z'))).toBe(true);
     // cached formatter path
     expect(matches(c, d('2026-10-29T01:00:00Z'))).toBe(true);
+  });
+});
+
+describe('firesPerDay', () => {
+  it('is 24 for hourly and higher when the minute field repeats all day', () => {
+    expect(firesPerDay(parseCron('0 * * * *'))).toBe(24);
+    expect(firesPerDay(parseCron('*/15 * * * *'))).toBe(96);
+    expect(firesPerDay(parseCron('0,30 0 * * *'))).toBe(2);
+    expect(firesPerDay(parseCron('*/15 9-17 * * *'))).toBe(36);
   });
 });
 

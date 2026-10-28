@@ -30,10 +30,13 @@ afterEach(() => vi.unstubAllGlobals());
 describe('main', () => {
   it('reads defaults and overrides', () => {
     expect(readOptions()).toMatchObject({ lookbackMinutes: 1440, delayMinutes: 30, graceMinutes: 90, rerunOnIncident: false, maxReruns: 1, createIssues: true });
-    inputs = { 'lookback-minutes': '60', 'rerun-on-incident': 'TRUE', 'ignore-workflows': 'a.yml, b.yml\nc.yml' };
-    expect(readOptions()).toMatchObject({ lookbackMinutes: 60, rerunOnIncident: true, ignore: ['a.yml', 'b.yml', 'c.yml'] });
+    expect(readOptions().minConsecutiveMisses).toBeUndefined();
+    inputs = { 'lookback-minutes': '60', 'rerun-on-incident': 'TRUE', 'ignore-workflows': 'a.yml, b.yml\nc.yml', 'min-consecutive-misses': '4' };
+    expect(readOptions()).toMatchObject({ lookbackMinutes: 60, rerunOnIncident: true, ignore: ['a.yml', 'b.yml', 'c.yml'], minConsecutiveMisses: 4 });
     inputs = { 'max-reruns': '-1' };
     expect(() => readOptions()).toThrow(/non-negative/);
+    inputs = { 'min-consecutive-misses': '0' };
+    expect(() => readOptions()).toThrow(/positive integer/);
   });
   it('runs end to end with outputs', async () => {
     vi.stubGlobal('fetch', async (url: string) => {

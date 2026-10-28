@@ -100,6 +100,7 @@ export class GitHub {
     const out: Run[] = [];
     const created = encodeURIComponent(`>=${since.toISOString()}`);
     for (let page = 1; page <= maxPages; page++) {
+      // event=schedule only: a workflow_dispatch run is not a backfill for a missed slot.
       const r = await this.request<{ workflow_runs: Run[] }>(
         'GET',
         this.r(`/actions/workflows/${workflowId}/runs?event=schedule&created=${created}&per_page=100&page=${page}`),

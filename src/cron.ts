@@ -150,6 +150,20 @@ export function matches(spec: CronSpec, d: Date): boolean {
 
 const MIN = 60_000;
 
+const DAY_MS = 86_400_000;
+/** Monday, so a 7-day window contains every weekday. January avoids DST gaps. */
+const SAMPLE_WEEK_START = Date.UTC(2026, 0, 5);
+
+/**
+ * Average expected fires per day over a fixed 7-day week.
+ * Hourly (`0 * * * *`) is exactly 24. More than 24 means more often than hourly.
+ */
+export function firesPerDay(spec: CronSpec): number {
+  const from = new Date(SAMPLE_WEEK_START);
+  const to = new Date(SAMPLE_WEEK_START + 7 * DAY_MS);
+  return fireTimes(spec, from, to).length / 7;
+}
+
 /** All fire times t with from < t <= to (minute resolution). */
 export function fireTimes(spec: CronSpec, from: Date, to: Date, limit = 100_000): Date[] {
   const out: Date[] = [];

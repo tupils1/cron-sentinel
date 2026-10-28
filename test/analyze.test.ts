@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze, hasProblems } from '../src/analyze';
+import { analyze, defaultMinConsecutiveMisses, hasProblems } from '../src/analyze';
 import { run } from './helpers';
 
 const wf = (cron = '0 * * * *', tz?: string) => ({ path: '.github/workflows/n.yml', name: 'n', schedules: [{ cron, timezone: tz }], hasDispatch: false });
@@ -49,5 +49,42 @@ describe('analyze', () => {
     const a = analyze(wf('0 9 * * *', 'Asia/Shanghai'), [run('2026-10-28T01:04:00Z')], now, T);
     expect(a.slots.map((s) => s.expected.toISOString())).toEqual(['2026-10-28T01:00:00.000Z']);
     expect(a.missed).toHaveLength(0);
+  });
+
+  it('defaults to 3 consecutive misses only when the schedule is more often than hourly', () => {
+    expect(defaultMinConsecutiveMisses('0 * * * *')).toBe(1);
+    expect(defaultMinConsecutiveMisses('0 0 * * *')).toBe(1);
+    expect(defaultMinConsecutiveMisses('0,30 0 * * *')).toBe(1);
+    expect(defaultMinConsecutiveMisses('*/15 9 * * *')).toBe(1);
+    expect(defaultMinConsecutiveMisses('0 9 * * *', 'Asia/Shanghai')).toBe(1);
+    expect(defaultMinConsecutiveMisses('*/15 * * * *')).toBe(3);
+    expect(defaultMinConsecutiveMisses('*/5 * * * *')).toBe(3);
+    expect(defaultMinConsecutiveMisses('0,30 * * * *')).toBe(3);
+    expect(defaultMinConsecutiveMisses('*/15 9-17 * * *')).toBe(3);
+    expect(defaultMinConsecutiveMisses('* * * * *')).toBe(3);
+  });
+
+  it('hides sub-hourly misses until the streak reaches the threshold', () => {
+    const quarter = wf('*/15 * * * *');
+    const opts = { lookbackMinutes: 180, delayMinutes: 30, graceMinutes: 20 };
+    const hit = (hm: string) => run(`2026-10-28T${hm}:01Z`);
+    // 03:30 and 03:45 are only two misses; 04:15–04:45 are three. 05:00 is inside grace.
+    const runs = [hit('02:15'), hit('02:30'), hit('02:45'), hit('03:00'), hit('03:15'), hit('04:00')];
+    const a = analyze(quarter, runs, now, opts);
+    expect(a.missed.map((s) => s.expected.toISOString())).toEqual([
+      '2026-10-28T04:15:00.000Z',
+      '2026-10-28T04:30:00.000Z',
+      '2026-10-28T04:45:00.000Z',
+    ]);
+    expect(a.suppressedMisses).toBe(2);
+    expect(analyze(quarter, runs, now, { ...opts, minConsecutiveMisses: 1 }).missed).toHaveLength(5);
+    expect(analyze(quarter, runs, now, { ...opts, minConsecutiveMisses: 4 }).missed).toHaveLength(0);
+    expect(analyze(quarter, runs, now, { ...opts, minConsecutiveMisses: 4 }).suppressedMisses).toBe(5);
+  });
+
+  it('still reports a single miss for an hourly schedule, unless overridden', () => {
+    const a = analyze(wf(), [run('2026-10-28T01:05:00Z'), run('2026-10-28T02:03:00Z')], now, { ...T, minConsecutiveMisses: 2 });
+    expect(a.missed).toHaveLength(0);
+    expect(a.suppressedMisses).toBe(1);
   });
 });
