@@ -1,0 +1,28 @@
+{
+  "name": "cron-sentinel",
+  "version": "0.1.0",
+  "description": "Watchdog for missed GitHub Actions scheduled runs",
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --license licenses.txt",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "vitest run --coverage",
+    "all": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vercel/ncc": "^0.45.0",
+    "@vitest/coverage-v8": "^4.1.12",
+    "eslint": "^10.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^4.1.12"
+  },
+  "private": true
+}

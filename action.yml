@@ -1,0 +1,58 @@
+name: 'cron-sentinel'
+description: 'Zero-config watchdog for GitHub Actions scheduled workflows: finds missed, late and failing cron runs and opens an issue.'
+author: 'tupils1'
+branding:
+  icon: 'clock'
+  color: 'orange'
+inputs:
+  github-token:
+    description: 'Token with actions:read, contents:read and issues:write (actions:write only if rerun-on-incident is true).'
+    default: ${{ github.token }}
+  repository:
+    description: 'owner/name of the repository to watch. Defaults to the current repository.'
+    default: ''
+  lookback-minutes:
+    description: 'How far back to check expected fire times.'
+    default: '1440'
+  delay-threshold-minutes:
+    description: 'A run that starts later than this counts as a severe delay.'
+    default: '30'
+  grace-minutes:
+    description: 'An expected time with no run counts as missed only after this many minutes (GitHub often delays schedule runs).'
+    default: '90'
+  ignore-workflows:
+    description: 'Comma or newline separated workflow file names or paths to skip.'
+    default: ''
+  create-issues:
+    description: 'Open or update one issue per problem workflow.'
+    default: 'true'
+  close-on-recovery:
+    description: 'Close the issue when the workflow is healthy again.'
+    default: 'true'
+  inactivity-warn-days:
+    description: 'Warn when the default branch has had no commit for this many days (GitHub disables schedules at 60 in public repos).'
+    default: '45'
+  rerun-on-incident:
+    description: 'Re-run failed jobs of the latest failed schedule run, only when githubstatus.com reports an overlapping Actions incident. Off by default.'
+    default: 'false'
+  max-reruns:
+    description: 'Retry cap: do not re-run a run whose attempt number is already above this.'
+    default: '1'
+  log-tail-lines:
+    description: 'Lines of the failed job log to include in the issue.'
+    default: '40'
+  dry-run:
+    description: 'Log what would happen without writing issues or re-running.'
+    default: 'false'
+outputs:
+  workflows-checked:
+    description: 'Number of scheduled workflows checked.'
+  problems:
+    description: 'Number of workflows with problems.'
+  issues:
+    description: 'JSON list of issue actions.'
+  reruns:
+    description: 'JSON list of re-runs triggered.'
+runs:
+  using: 'node24'
+  main: 'dist/index.js'
