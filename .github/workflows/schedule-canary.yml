@@ -1,10 +1,10 @@
-# High-frequency schedule used as a real subject for cron-sentinel.
+# Hourly subject for cron-sentinel. Minute 17 stays off the top of the hour.
 # GitHub only fires `schedule` on the default branch. workflow_dispatch runs
 # are intentionally not a backfill: cron-sentinel counts event=schedule only.
 name: schedule-canary
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
 permissions:
   contents: read

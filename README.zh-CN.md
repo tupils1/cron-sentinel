@@ -49,4 +49,4 @@
 - workflow 文件按检查时的默认分支读取；窗口内改过 cron 的话，旧时段也按新 cron 算。
 - workflow 创建之前的期望时间会跳过。
 - 每 5–15 分钟这类高频任务常被 GitHub 稀释。它们默认要连续漏跑 3 次才报告；用 `min-consecutive-misses` 修改。`workflow_dispatch` 不会算作补跑。
-- 本仓库的自测是 [`.github/workflows/schedule-canary.yml`](.github/workflows/schedule-canary.yml)（`*/15`，只在默认分支上被调度）和 [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)（用 `uses: ./` 分别跑 dry-run 和正常模式）。
+- 本仓库的自测是 [`.github/workflows/schedule-canary.yml`](.github/workflows/schedule-canary.yml)（每小时第 17 分，只在默认分支上被调度）和 [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)（用 `uses: ./` 分别跑 dry-run 和正常模式）。

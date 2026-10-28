@@ -66,7 +66,7 @@ Outputs: `workflows-checked`, `problems`, `issues` (JSON), `reruns` (JSON).
 - Workflow files are read from the default branch at check time; if a cron changed inside the window, older slots use the new cron.
 - Expected times before the workflow was created are skipped.
 - Very frequent schedules (every 5–15 min) are often thinned by GitHub. They default to a miss report only after 3 consecutive missed slots; set `min-consecutive-misses` to change that. `workflow_dispatch` runs never fill a slot.
-- This repo's own check is [`.github/workflows/schedule-canary.yml`](.github/workflows/schedule-canary.yml) (`*/15`, default branch only) plus [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml), which runs `uses: ./` in dry-run and normal mode.
+- This repo's own check is [`.github/workflows/schedule-canary.yml`](.github/workflows/schedule-canary.yml) (hourly at minute 17, default branch only) plus [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml), which runs `uses: ./` in dry-run and normal mode.
 
 ## Development
 

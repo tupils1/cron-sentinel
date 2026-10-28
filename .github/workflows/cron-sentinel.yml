@@ -3,12 +3,12 @@
 # `workflow_dispatch` run it on a branch so the result can be checked
 # against the real Actions runs API before merge. A push has to change
 # the tree; an empty commit does not start this workflow. Grace below is
-# 5 minutes, so a */15 slot is eligible on a later push.
+# 5 minutes, so the hourly :17 slot is eligible after :22.
 name: cron-sentinel
 on:
   schedule:
-    # A few minutes after schedule-canary's */15 slots (0, 15, 30, 45).
-    - cron: '8,23,38,53 * * * *'
+    # Ten minutes after schedule-canary's hourly :17 slot.
+    - cron: '27 * * * *'
   workflow_dispatch:
   push:
     branches-ignore: [main]
@@ -25,7 +25,7 @@ jobs:
         uses: ./
         with:
           dry-run: 'true'
-          # Empty min-consecutive-misses: 3 for the */15 canary, 1 otherwise.
+          # Empty min-consecutive-misses: 1 for this hourly canary, 3 if a schedule is sub-hourly.
           grace-minutes: '5'
           delay-threshold-minutes: '5'
           lookback-minutes: '1440'
@@ -44,8 +44,7 @@ jobs:
         uses: ./
         with:
           dry-run: 'false'
-          # 1 so a single aged miss still opens an issue. The dry-run job
-          # leaves this empty and shows the sub-hourly default of 3.
+          # Hourly default is already 1. Set it so a single miss still opens an issue.
           min-consecutive-misses: '1'
           grace-minutes: '5'
           delay-threshold-minutes: '5'
