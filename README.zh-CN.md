@@ -21,7 +21,7 @@
 
 见英文 README 的示例，或 [`examples/cron-sentinel.yml`](examples/cron-sentinel.yml)。
 
-> **`@v0` 尚未发布。** 没有 `v0` git tag、GitHub Release，也没有上架 Marketplace，所以 `tupils1/cron-sentinel@v0` 目前解析不到。示例里仍保留 `@v0`，作为发布之后要用的 ref。在那之前，请检出本仓库并用 `uses: ./`（见 [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)）。
+> **`@v1` 尚未发布。** 没有 `v1` git tag、GitHub Release，也没有上架 Marketplace，所以 `tupils1/cron-sentinel@v1` 目前解析不到。示例里仍保留 `@v1`，作为发布之后要用的 ref。在那之前，请检出本仓库并用 `uses: ./`（见 [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)）。
 
 > ⚠️ 哨兵本身也是定时任务，同样可能漏跑。建议另加一个外部触发：用外部 cron 调 `workflow_dispatch`，或者放在另一个仓库里，用 `repository: owner/name` 加一个能读目标仓库的 token。
 

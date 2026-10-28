@@ -33,10 +33,10 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - uses: tupils1/cron-sentinel@v0
+      - uses: tupils1/cron-sentinel@v1
 ```
 
-> **`@v0` is not released.** There is no `v0` git tag, GitHub Release, or Marketplace listing, so `tupils1/cron-sentinel@v0` does not resolve yet. The example keeps `@v0` as the ref to use once a release exists. Until then, check out this repository and call it with `uses: ./` (see [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)).
+> **`@v1` is not released.** There is no `v1` git tag, GitHub Release, or Marketplace listing, so `tupils1/cron-sentinel@v1` does not resolve yet. The example keeps `@v1` as the ref to use once a release exists. Until then, check out this repository and call it with `uses: ./` (see [`.github/workflows/cron-sentinel.yml`](.github/workflows/cron-sentinel.yml)).
 
 > ⚠️ The sentinel can be delayed or dropped like any scheduled workflow. For best results trigger it from somewhere else too: an external cron calling `workflow_dispatch`, or run it from a different repo with `repository: owner/name` and a token that can read that repo.
 

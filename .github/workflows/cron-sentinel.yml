@@ -1,4 +1,4 @@
-# Runs this repo's action via `uses: ./` ( @v0 is not released ).
+# Runs this repo's action via `uses: ./` ( @v1 is not released ).
 # `schedule` fires only on the default branch. `push` (non-main) and
 # `workflow_dispatch` run it on a branch so the result can be checked
 # against the real Actions runs API before merge.

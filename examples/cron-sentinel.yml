@@ -1,5 +1,5 @@
 # Copy to .github/workflows/cron-sentinel.yml
-# @v0 is not released yet (no git tag, GitHub Release, or Marketplace listing).
+# @v1 is not released yet (no git tag, GitHub Release, or Marketplace listing).
 # Until that ref exists, checkout this repo and use `uses: ./` instead.
 name: cron-sentinel
 on:
@@ -14,6 +14,6 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - uses: tupils1/cron-sentinel@v0
+      - uses: tupils1/cron-sentinel@v1
         # with:
         #   min-consecutive-misses: '3'  # empty = 3 above hourly, 1 otherwise. Dispatch runs are not backfill.
