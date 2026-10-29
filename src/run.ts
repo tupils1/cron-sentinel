@@ -71,7 +71,7 @@ export async function runSentinel(
     if (w.state === 'disabled_inactivity') a.errors.push('GitHub disabled this workflow after 60 days of repository inactivity. Re-enable it in the Actions tab.');
     else if (w.state.startsWith('disabled')) a.errors.push(`Workflow state is \`${w.state}\`; scheduled runs will not fire.`);
     result.analyses.push(a);
-    log.info(`${w.path}: expected ${a.slots.length}, missed ${a.missed.length}, delayed ${a.delayed.length}, failing ${a.failed.length}`);
+    log.info(`${w.path}: expected ${a.slots.length}, missed ${a.missed.length}, suppressed ${a.suppressedMisses}, delayed ${a.delayed.length}, failing ${a.failed.length}`);
 
     const failures: FailureDetail[] = [];
     for (const r of a.failed.slice(-3)) failures.push(await describeFailure(gh, r, o.logTailLines));
@@ -133,7 +133,14 @@ async function syncIssue(
     return;
   }
   const title = issueTitle(a);
-  const body = issueBody(a, failures, { lookbackMinutes: o.lookbackMinutes, delayMinutes: o.delayMinutes, now });
+  const notes: string[] = [];
+  if (a.suppressedMisses > 0) {
+    const rule = o.minConsecutiveMisses === undefined
+      ? '3 for schedules that fire more than once an hour, otherwise 1'
+      : String(o.minConsecutiveMisses);
+    notes.push(`${a.suppressedMisses} missed slot(s) were hidden: a miss is reported only after ${rule} consecutive misses.`);
+  }
+  const body = issueBody(a, failures, { lookbackMinutes: o.lookbackMinutes, delayMinutes: o.delayMinutes, now, notes });
   if (o.dryRun) {
     log.info(`[dry-run] ${title}\n${body}`);
     result.issues.push({ workflow: path, number: existing?.number, action: 'dry-run' });

@@ -1,0 +1,59 @@
+# Runs this repo's action via `uses: ./` ( @v1 is not released ).
+# `schedule` fires only on the default branch. `push` (non-main) and
+# `workflow_dispatch` run it on a branch so the result can be checked
+# against the real Actions runs API before merge. A push has to change
+# the tree; an empty commit does not start this workflow. Grace below is
+# 5 minutes, so the hourly :17 slot is eligible after :22.
+name: cron-sentinel
+on:
+  schedule:
+    # Ten minutes after schedule-canary's hourly :17 slot.
+    - cron: '27 * * * *'
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+permissions:
+  actions: read
+  contents: read
+  issues: write
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: sentinel
+        uses: ./
+        with:
+          dry-run: 'true'
+          # Empty min-consecutive-misses: 1 for this hourly canary, 3 if a schedule is sub-hourly.
+          grace-minutes: '5'
+          delay-threshold-minutes: '5'
+          lookback-minutes: '1440'
+          inactivity-warn-days: '45'
+      - name: outputs
+        run: |
+          echo "workflows-checked=${{ steps.sentinel.outputs.workflows-checked }}"
+          echo "problems=${{ steps.sentinel.outputs.problems }}"
+          echo "issues=${{ steps.sentinel.outputs.issues }}"
+          echo "reruns=${{ steps.sentinel.outputs.reruns }}"
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: sentinel
+        uses: ./
+        with:
+          dry-run: 'false'
+          # Hourly default is already 1. Set it so a single miss still opens an issue.
+          min-consecutive-misses: '1'
+          grace-minutes: '5'
+          delay-threshold-minutes: '5'
+          lookback-minutes: '1440'
+          # 0 forces the 60-day warning path on a repository that still has recent commits.
+          inactivity-warn-days: '0'
+      - name: outputs
+        run: |
+          echo "workflows-checked=${{ steps.sentinel.outputs.workflows-checked }}"
+          echo "problems=${{ steps.sentinel.outputs.problems }}"
+          echo "issues=${{ steps.sentinel.outputs.issues }}"
+          echo "reruns=${{ steps.sentinel.outputs.reruns }}"

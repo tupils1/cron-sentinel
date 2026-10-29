@@ -1,4 +1,4 @@
-name: 'cron-sentinel'
+name: 'Cron Sentinel'
 description: 'Zero-config watchdog for GitHub Actions scheduled workflows: finds missed, late and failing cron runs and opens an issue.'
 author: 'tupils1'
 branding:
@@ -20,6 +20,9 @@ inputs:
   grace-minutes:
     description: 'An expected time with no run counts as missed only after this many minutes (GitHub often delays schedule runs).'
     default: '90'
+  min-consecutive-misses:
+    description: 'Report a miss only after this many consecutive missed slots. Leave empty for the default: 3 when the schedule fires more than once an hour (more than 24 expected runs per day), 1 otherwise. workflow_dispatch runs are never counted as filling a slot.'
+    default: ''
   ignore-workflows:
     description: 'Comma or newline separated workflow file names or paths to skip.'
     default: ''

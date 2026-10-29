@@ -55,6 +55,9 @@ export function issueBody(
     }
   }
   for (const n of opts.notes ?? []) out.push(`> ${n}`);
-  out.push('', '_GitHub documents that `schedule` runs may be delayed or dropped under load, especially at the top of the hour. Consider a minute like `17` instead of `0`._');
+  out.push(
+    '',
+    '_GitHub documents that `schedule` runs may be delayed or dropped under load, especially at the top of the hour. Consider a minute like `17` instead of `0`. Only `event=schedule` runs count: a `workflow_dispatch` run does not fill a missed slot._',
+  );
   return out.join('\n');
 }

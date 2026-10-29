@@ -46,7 +46,13 @@ function world(w: World): Route {
       return c == null ? err(404) : { content: b64(c), encoding: 'base64' };
     }
     const m = /^\/actions\/workflows\/(\d+)\/runs/.exec(p);
-    if (m) return { workflow_runs: w.runs?.[Number(m[1])] ?? [] };
+    if (m) {
+      // Match the real runs API: `event=schedule` does not return workflow_dispatch.
+      let runs = w.runs?.[Number(m[1])] ?? [];
+      const event = new URL(url).searchParams.get('event');
+      if (event) runs = runs.filter((item) => item.event === event);
+      return { workflow_runs: runs };
+    }
     if (p.includes('/jobs?')) return { jobs: [{ id: 9, name: 'job', conclusion: 'failure', started_at: '2026-10-28T04:01:00Z', completed_at: '2026-10-28T04:02:00Z', steps: [{ name: 'step', conclusion: 'failure', number: 1 }] }] };
     if (p.includes('/logs')) return 'oops\n##[error]Process completed with exit code 1.';
     if (p.startsWith('/issues?')) return w.issues ?? [];
@@ -99,6 +105,41 @@ describe('runSentinel', () => {
     expect((await go({ runs: { 1: healthy }, issues }, { dryRun: true })).r.issues[0].action).toBe('dry-run');
   });
 
+  it('does not open an issue for a short sub-hourly miss streak', async () => {
+    const quarter = "name: Quarter\non:\n  schedule:\n    - cron: '*/15 * * * *'\njobs: {}\n";
+    const files = { '.github/workflows/hourly.yml': quarter };
+    const open = await go({ files, runs: { 1: [] } }, { lookbackMinutes: 60, graceMinutes: 0 });
+    expect(open.r.analyses[0].missed).toHaveLength(4);
+    expect(open.r.analyses[0].suppressedMisses).toBe(0);
+    expect(open.r.issues[0]).toMatchObject({ action: 'created' });
+    expect((open.calls.find((c) => c.method === 'POST')!.body as { title: string }).title).toBe('[cron-sentinel] Quarter: 4 missed');
+    resetIssueCache();
+    const hidden = await go(
+      { files, runs: { 1: [run('2026-10-28T04:30:05Z')] } },
+      { lookbackMinutes: 60, graceMinutes: 0 },
+    );
+    expect(hidden.r.analyses[0].missed).toHaveLength(0);
+    expect(hidden.r.analyses[0].suppressedMisses).toBe(3);
+    expect(hidden.r.issues).toEqual([]);
+    expect(hidden.calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+
+  it('explains hidden misses when an issue is opened', async () => {
+    const quarter = "name: Quarter\non:\n  schedule:\n    - cron: '*/15 * * * *'\njobs: {}\n";
+    const files = { '.github/workflows/hourly.yml': quarter };
+    const runs = ['02:15', '02:30', '02:45', '03:00', '03:15', '04:00'].map((hm) => run(`2026-10-28T${hm}:01Z`));
+    const noted = await go({ files, runs: { 1: runs } }, { lookbackMinutes: 180, graceMinutes: 20 });
+    const body = (noted.calls.find((c) => c.method === 'POST')!.body as { body: string }).body;
+    expect(noted.r.analyses[0].suppressedMisses).toBe(2);
+    expect(body).toContain('2 missed slot(s) were hidden');
+    expect(body).toContain('more than once an hour');
+    resetIssueCache();
+    const explicit = await go({ files, runs: { 1: runs } }, { lookbackMinutes: 180, graceMinutes: 20, minConsecutiveMisses: 3 });
+    const body2 = (explicit.calls.find((c) => c.method === 'POST')!.body as { body: string }).body;
+    expect(body2).toContain('after 3 consecutive');
+    expect(body2).not.toContain('more than once an hour');
+  });
+
   it('dry run writes nothing', async () => {
     const { r, calls } = await go({ runs: { 1: [] } }, { dryRun: true });
     expect(r.issues[0].action).toBe('dry-run');
@@ -142,6 +183,23 @@ describe('runSentinel', () => {
     expect(r.analyses[1].errors[0]).toMatch(/disabled_manually/);
   });
 
+  it('a freshly created workflow has no expected slots yet', async () => {
+    const { r } = await go({
+      workflows: [{ id: 1, path: '.github/workflows/hourly.yml', state: 'active', created_at: '2026-10-28T05:05:00Z' }],
+      runs: {
+        1: [
+          run('2026-10-28T04:03:00Z'),
+          run('2026-10-28T05:06:00Z', 'success', { event: 'workflow_dispatch' }),
+        ],
+      },
+    });
+    expect(r.analyses).toHaveLength(1);
+    expect(r.analyses[0].slots).toHaveLength(0);
+    expect(r.analyses[0].missed).toHaveLength(0);
+    expect(r.issues).toEqual([]);
+    expect(logs.some((l) => l.includes('expected 0, missed 0'))).toBe(true);
+  });
+
   it('no inactivity check for private repos or empty history', async () => {
     expect((await go({ private: true, lastCommit: '2025-01-01T00:00:00Z', runs: { 1: healthy } })).r.inactivityWarning).toBeUndefined();
     expect((await go({ lastCommit: null, runs: { 1: healthy } })).r.inactivityWarning).toBeUndefined();
@@ -170,7 +228,10 @@ describe('runSentinel', () => {
       expect(reran(calls)).toBe(false);
     });
     it('only schedule-triggered runs', async () => {
-      const { calls } = await go({ runs: { 1: failing({ event: 'workflow_dispatch' }) }, incidents: incident }, { rerunOnIncident: true });
+      const { r, calls } = await go({ runs: { 1: failing({ event: 'workflow_dispatch' }) }, incidents: incident }, { rerunOnIncident: true });
+      expect(calls.some((c) => c.url.includes('event=schedule'))).toBe(true);
+      expect(r.analyses[0].failed).toHaveLength(0);
+      expect(r.analyses[0].slots.find((s) => s.expected.toISOString() === '2026-10-28T05:00:00.000Z')?.run).toBeUndefined();
       expect(reran(calls)).toBe(false);
     });
     it('dry run and status page errors do not re-run', async () => {

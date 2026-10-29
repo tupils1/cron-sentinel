@@ -17,5 +17,6 @@ describe('report', () => {
     expect(body).toContain('min late');
     expect(body).toContain('> note!');
     expect(body).toContain('duration unknown');
+    expect(body).toContain('workflow_dispatch');
   });
 });

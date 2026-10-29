@@ -13,12 +13,21 @@ function bool(name: string, def: boolean): boolean {
   const v = core.getInput(name).trim().toLowerCase();
   return v === '' ? def : v === 'true';
 }
+/** Empty means "automatic" (see defaultMinConsecutiveMisses). */
+function optionalPositiveInt(name: string): number | undefined {
+  const v = core.getInput(name).trim();
+  if (v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`input ${name} must be a positive integer`);
+  return n;
+}
 
 export function readOptions(): Options {
   return {
     lookbackMinutes: num('lookback-minutes', 1440),
     delayMinutes: num('delay-threshold-minutes', 30),
     graceMinutes: num('grace-minutes', 90),
+    minConsecutiveMisses: optionalPositiveInt('min-consecutive-misses'),
     createIssues: bool('create-issues', true),
     closeOnRecovery: bool('close-on-recovery', true),
     ignore: core.getInput('ignore-workflows').split(/[\s,]+/).filter(Boolean),
@@ -46,8 +55,22 @@ export async function main(): Promise<void> {
     await core.summary
       .addHeading('cron-sentinel')
       .addTable([
-        [{ data: 'Workflow', header: true }, { data: 'Expected', header: true }, { data: 'Missed', header: true }, { data: 'Delayed', header: true }, { data: 'Failing', header: true }],
-        ...r.analyses.map((a) => [a.workflow.path, String(a.slots.length), String(a.missed.length), String(a.delayed.length), String(a.failed.length)]),
+        [
+          { data: 'Workflow', header: true },
+          { data: 'Expected', header: true },
+          { data: 'Missed', header: true },
+          { data: 'Suppressed', header: true },
+          { data: 'Delayed', header: true },
+          { data: 'Failing', header: true },
+        ],
+        ...r.analyses.map((a) => [
+          a.workflow.path,
+          String(a.slots.length),
+          String(a.missed.length),
+          String(a.suppressedMisses),
+          String(a.delayed.length),
+          String(a.failed.length),
+        ]),
       ])
       .addRaw(r.inactivityWarning ? `\n\n⚠️ ${r.inactivityWarning}\n` : '')
       .write()
